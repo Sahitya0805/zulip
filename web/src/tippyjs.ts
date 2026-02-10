@@ -11,6 +11,7 @@ import render_topics_not_allowed_error from "../templates/topics_not_allowed_err
 
 import * as compose_state from "./compose_state.ts";
 import * as compose_validate from "./compose_validate.ts";
+import * as emoji from "./emoji.ts";
 import {$t} from "./i18n.ts";
 import * as information_density from "./information_density.ts";
 import * as people from "./people.ts";
@@ -636,22 +637,95 @@ export function initialize(): void {
         appendTo: () => document.body,
     });
 
-    tippy.delegate("body", {
+    tippy.delegate(document.body, {
         target: ".status-emoji-name:not(.typeahead-item .status-emoji-name)",
         placement: "top",
         delay: INSTANT_HOVER_DELAY,
         appendTo: () => document.body,
 
-        /*
-            Status emoji tooltips for most locations in the app. This
-            basic tooltip logic is overridden by separate logic in
-            click_handlers.ts for the left and right sidebars, to
-            avoid problematic interactions with the main tooltips for
-            those regions.
-        */
+        onShow(instance) {
+            const $elt = $(instance.reference);
+            let emoji_name = $elt.attr("data-tippy-content");
+            if (emoji_name && emoji_name.startsWith(":") && emoji_name.endsWith(":")) {
+                emoji_name = emoji_name.slice(1, -1);
+            }
+
+            if (!emoji_name) {
+                return false;
+            }
+
+            let url = $elt.attr("data-animated-url");
+            url ??= $elt.attr("src");
+
+            if (!url) {
+                return false;
+            }
+
+            const fragment = ui_util.parse_html($("template#emoji-tooltip-template").html());
+            const $content = $(fragment).find(".emoji-tooltip-container");
+            $content.find("img.emoji").attr("src", url);
+            $content.find(".emoji-name").text(":" + emoji_name + ":");
+
+            instance.setContent(fragment);
+            return undefined;
+        },
 
         onHidden(instance) {
             instance.destroy();
+        },
+    });
+
+    tippy.delegate(document.body, {
+        target: ".rendered_markdown .emoji",
+        placement: "top",
+        delay: INSTANT_HOVER_DELAY,
+        appendTo: () => document.body,
+
+        onShow(instance) {
+            const $elt = $(instance.reference);
+            let emoji_name = $elt.attr("title");
+            if (!emoji_name) {
+                return false;
+            }
+
+            if (emoji_name.startsWith(":") && emoji_name.endsWith(":")) {
+                emoji_name = emoji_name.slice(1, -1);
+            }
+
+            let url;
+            if ($elt.is("img")) {
+                url = $elt.attr("src");
+            } else {
+                const classes = $elt.attr("class")?.split(" ") ?? [];
+                const emoji_class = classes.find((c) => c.startsWith("emoji-"));
+                if (emoji_class) {
+                    const codepoint = emoji_class.split("-")[1];
+                    const emojiset = user_settings.emojiset;
+                    const set_to_use = emojiset === "text" ? "google" : emojiset;
+                    url = `/static/generated/emoji/images-${set_to_use}-64/${codepoint}.png`;
+                }
+            }
+
+            if (!url) {
+                try {
+                    const details = emoji.get_emoji_details_by_name(emoji_name);
+                    url = details.url;
+                } catch {
+                    // Ignore
+                }
+            }
+
+            if (!url) {
+                return false;
+            }
+
+            const fragment = ui_util.parse_html($("template#emoji-tooltip-template").html());
+            const $content = $(fragment).find(".emoji-tooltip-container");
+            $content.find("img.emoji").attr("src", url);
+            $content.find(".emoji-name").text(":" + emoji_name + ":");
+
+            instance.setContent(fragment);
+            return undefined;
         },
     });
 
